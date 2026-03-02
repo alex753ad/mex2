@@ -1,4 +1,4 @@
-"""MEXC Density Scanner v4.2 — fixed nav, autoscan, colors"""
+"""MEXC Density Scanner v4.2 - fixed nav, autoscan, colors"""
 import io, time, zipfile, math
 from datetime import datetime
 from collections import Counter
@@ -10,9 +10,9 @@ from mexc_client import MexcClientSync
 from analyzer import analyze_order_book
 from history import DensityTracker
 
-st.set_page_config(page_title="MEXC Scanner", page_icon="🔍", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="MEXC Scanner", page_icon="?", layout="wide", initial_sidebar_state="expanded")
 
-# ── helpers ──
+# -- helpers --
 def sf(v, d=0.0):
     if v is None or v == "": return d
     try: return float(v)
@@ -55,12 +55,9 @@ def fmt_price(price):
     if price >= 1: return f"{price:.2f}"
     if price >= 0.01: return f"{price:.4f}"
     exp = int(math.floor(math.log10(abs(price)))); m = price / (10 ** exp)
-    s = str(exp)
-    for a, b in [("-","\u207b"),("0","\u2070"),("1","\u00b9"),("2","\u00b2"),("3","\u00b3"),("4","\u2074"),("5","\u2075"),("6","\u2076"),("7","\u2077"),("8","\u2078"),("9","\u2079")]:
-        s = s.replace(a, b)
-    return f"{m:.2f}\u00b710{s}"
+    return f"{m:.2f}e{exp}"
 def fmt_usd(v):
-    if v <= 0: return "\u2014"
+    if v <= 0: return "-"
     if v >= 1000: return f"${v/1000:.1f}K"
     return f"${v:,.0f}"
 def mexc_link(s): return f"https://www.mexc.com/exchange/{s.replace('USDT','_USDT')}"
@@ -100,7 +97,7 @@ def analyze_robots(trades_raw):
             "is_robot": avg_d < 30 and max_d < 120,
             "avg_vol": sum(volumes) / len(volumes) if volumes else 0, "robots": robots}
 
-# ── charts v2.5 colors ──
+# -- charts v2.5 colors --
 def build_candlestick(df, symbol, interval, cur_price=None):
     if df is None or df.empty or len(df) < 2: return None
     try:
@@ -141,9 +138,9 @@ def build_orderbook_chart(bids, asks, cur_price, depth=50):
                 hovertemplate="Price: %{y:.8g}<br>$%{x:,.0f}<extra>ASK</extra>"))
         if cur_price and float(cur_price) > 0:
             fig.add_hline(y=float(cur_price), line_dash="dot", line_color="#00d2ff",
-                          line_width=2, annotation_text=f"  \u2190 {float(cur_price):.8g}",
+                          line_width=2, annotation_text=f"  <- {float(cur_price):.8g}",
                           annotation_font_color="#00d2ff")
-        fig.update_layout(title="\ud83d\udcd6 Orderbook", xaxis_title="Vol ($)",
+        fig.update_layout(title="OB Orderbook", xaxis_title="Vol ($)",
                           yaxis_title="Price", template="plotly_dark",
                           height=max(500, depth * 12), barmode="relative",
                           showlegend=True, margin=dict(l=80, r=20, t=40, b=30))
@@ -172,15 +169,15 @@ def build_heatmap(bids, asks, cur_price, depth=30):
                                 hoverinfo="text", showlegend=False))
         if cur_price and float(cur_price) > 0:
             fig.add_hline(y=float(cur_price), line_dash="dot", line_color="#00d2ff",
-                          line_width=2, annotation_text=f"  \u2190 {float(cur_price):.8g}",
+                          line_width=2, annotation_text=f"  <- {float(cur_price):.8g}",
                           annotation_font_color="#00d2ff")
-        fig.update_layout(title="\ud83d\udd25 Heatmap", template="plotly_dark",
+        fig.update_layout(title="HM Heatmap", template="plotly_dark",
                           height=500, yaxis_title="Price", xaxis_title="Vol (USDT)",
                           margin=dict(l=80, r=20, t=40, b=30))
         return fig
     except: return None
 
-# ── state ──
+# -- state --
 for k, v in [("tracker", DensityTracker()), ("scan_results", []), ("last_scan", 0.0),
              ("total_pairs", 0), ("client", MexcClientSync()), ("detail_symbol", ""),
              ("favorites", set()), ("blacklist", set()), ("cancel_scan", False),
@@ -191,7 +188,7 @@ def go_detail(sym):
     st.session_state.detail_symbol = sym
     st.session_state.current_page = 1
 
-# ── scan ──
+# -- scan --
 def run_scan(min_vol, max_vol, min_spread, wall_mult, min_wall_usd, top_n):
     import config as cfg
     cfg.MIN_DAILY_VOLUME_USDT = min_vol; cfg.MAX_DAILY_VOLUME_USDT = max_vol
@@ -260,11 +257,11 @@ def run_scan(min_vol, max_vol, min_spread, wall_mult, min_wall_usd, top_n):
     st.session_state.cancel_scan = False
     progress.progress(100, "Done!"); time.sleep(0.2); progress.empty()
 
-# ══════════════════════════════════════════
+# ==========================================
 # SIDEBAR
-# ══════════════════════════════════════════
+# ==========================================
 with st.sidebar:
-    st.markdown("## \u2699\ufe0f Settings")
+    st.markdown("## CFG Settings")
     min_vol = st.number_input("Min vol 24h ($)", value=100, min_value=0, step=100,
                               help="Minimum daily trading volume in USDT")
     max_vol = st.number_input("Max vol 24h ($)", value=500_000, min_value=100, step=10000,
@@ -277,20 +274,20 @@ with st.sidebar:
     min_wall_usd = st.number_input("Min wall $", value=50, min_value=1, step=10)
     top_n = st.slider("Max results", 5, 100, 30)
     st.markdown("---")
-    auto_on = st.checkbox("\ud83d\udd04 Auto-scan", value=True)
+    auto_on = st.checkbox("(R) Auto-scan", value=True)
     auto_sec = st.select_slider("Interval (s)", [15, 20, 30, 45, 60, 90], value=30)
     if auto_on:
         try:
             from streamlit_autorefresh import st_autorefresh
             st_autorefresh(interval=auto_sec * 1000, key="ar")
         except ImportError:
-            st.caption("\u26a0\ufe0f pip install streamlit-autorefresh")
+            st.caption("(!) pip install streamlit-autorefresh")
     c1s, c2s = st.columns(2)
-    scan_btn = c1s.button("\ud83d\ude80 Scan", use_container_width=True, type="primary")
-    if c2s.button("\u26d4 Stop", use_container_width=True):
+    scan_btn = c1s.button(">> Scan", use_container_width=True, type="primary")
+    if c2s.button("X Stop", use_container_width=True):
         st.session_state.cancel_scan = True
     st.markdown("---")
-    with st.expander("\ud83d\udeab Blacklist"):
+    with st.expander("(X) Blacklist"):
         bl_inp = st.text_input("Add tokens", placeholder="XYZUSDT,ABCUSDT", key="bl_inp")
         if bl_inp:
             for s in bl_inp.upper().replace(" ", "").split(","):
@@ -299,7 +296,7 @@ with st.sidebar:
         if st.session_state.blacklist:
             st.caption(", ".join(sorted(st.session_state.blacklist)))
             if st.button("Clear"): st.session_state.blacklist = set(); st.rerun()
-    with st.expander("\u2b50 Favorites"):
+    with st.expander("* Favorites"):
         fav = st.session_state.favorites
         if fav: st.caption(", ".join(sorted(fav)))
         up = st.file_uploader("Import", type=["csv", "txt"], key="fi", label_visibility="collapsed")
@@ -313,20 +310,20 @@ with st.sidebar:
     st.markdown("---")
     stats = st.session_state.tracker.get_stats()
     st.caption(f"Scans: {stats['total_scans']} | Movers: {stats['total_mover_events']}")
-    if st.button("\ud83d\udd27 Test API", use_container_width=True):
+    if st.button("T Test API", use_container_width=True):
         ok, msg = st.session_state.client.ping()
         st.success(msg) if ok else st.error(msg)
 
-# ══════════════════════════════════════════
+# ==========================================
 # AUTO-SCAN TRIGGER
-# ══════════════════════════════════════════
+# ==========================================
 if scan_btn or (auto_on and time.time() - st.session_state.last_scan > max(auto_sec - 3, 10)):
     run_scan(min_vol, max_vol, min_spread, wall_mult, min_wall_usd, top_n)
 
-# ══════════════════════════════════════════
-# NAVIGATION — buttons, not radio (radio key breaks on rerun)
-# ══════════════════════════════════════════
-PAGES = ["\ud83d\udcca Scanner", "\ud83d\udd0d Details", "\ud83d\udcc8 Movers"]
+# ==========================================
+# NAVIGATION - buttons, not radio (radio key breaks on rerun)
+# ==========================================
+PAGES = ["# Scanner", "(S) Details", "^ Movers"]
 cp = st.session_state.current_page
 nav_cols = st.columns(len(PAGES))
 for i, label in enumerate(PAGES):
@@ -338,24 +335,24 @@ for i, label in enumerate(PAGES):
 st.markdown("---")
 page = cp
 
-# ══════════════════════════════════════════
+# ==========================================
 # PAGE 0: SCANNER
-# ══════════════════════════════════════════
+# ==========================================
 if page == 0:
     results = st.session_state.scan_results
     tracker = st.session_state.tracker
     if not results:
-        st.info("Waiting for first scan..." if auto_on else "Press \ud83d\ude80 Scan in sidebar")
+        st.info("Waiting for first scan..." if auto_on else "Press >> Scan in sidebar")
     else:
         mc1, mc2, mc3, mc4 = st.columns(4)
         mc1.metric("Found", len(results))
         mc2.metric("Checked", st.session_state.total_pairs)
         mc3.metric("Best score", f"{results[0].score}")
-        mc4.metric("\u26a1 Movers", sum(1 for r in results if r.has_movers))
+        mc4.metric("! Movers", sum(1 for r in results if r.has_movers))
 
         sort_by = st.selectbox("Sort by",
-            ["Score \u2193", "Wall size \u2193", "Distance \u2191",
-             "Lifetime \u2193", "Spread \u2193", "Vol 24h \u2193"],
+            ["Score v", "Wall size v", "Distance ^",
+             "Lifetime v", "Spread v", "Vol 24h v"],
             key="sort_select")
 
         rows = []
@@ -370,20 +367,20 @@ if page == 0:
                         tw_big = tw; break
                 if not tw_big: tw_big = tw_list[0]
             lt_s = tw_big.lifetime_sec if tw_big else 0
-            lt_str = tw_big.lifetime_str if tw_big else "\u2014"
+            lt_str = tw_big.lifetime_str if tw_big else "-"
             bt = max(r.bid_walls, key=lambda w: w.size_usdt) if r.bid_walls else None
             at = max(r.ask_walls, key=lambda w: w.size_usdt) if r.ask_walls else None
             rows.append({
                 "Score": r.score, "Pair": r.symbol,
                 "Spread%": round(r.spread_pct, 2),
                 "Vol 24h": fmt_usd(r.volume_24h_usdt),
-                "Trades": r.trade_count_24h if r.trade_count_24h > 0 else "\u2014",
-                "BID wall": f"{fmt_usd(bt.size_usdt)} ({bt.multiplier}x)" if bt else "\u2014",
-                "BID dist%": f"{bt.distance_pct}%" if bt else "\u2014",
-                "ASK wall": f"{fmt_usd(at.size_usdt)} ({at.multiplier}x)" if at else "\u2014",
-                "ASK dist%": f"{at.distance_pct}%" if at else "\u2014",
+                "Trades": r.trade_count_24h if r.trade_count_24h > 0 else "-",
+                "BID wall": f"{fmt_usd(bt.size_usdt)} ({bt.multiplier}x)" if bt else "-",
+                "BID dist%": f"{bt.distance_pct}%" if bt else "-",
+                "ASK wall": f"{fmt_usd(at.size_usdt)} ({at.multiplier}x)" if at else "-",
+                "ASK dist%": f"{at.distance_pct}%" if at else "-",
                 "Lifetime": lt_str,
-                "\u26a1": "\u26a1" if r.has_movers else "",
+                "!": "!" if r.has_movers else "",
                 "_s": r.score, "_w": bw.size_usdt if bw else 0,
                 "_d": bw.distance_pct if bw else 99,
                 "_l": lt_s, "_sp": r.spread_pct, "_v": r.volume_24h_usdt,
@@ -399,12 +396,12 @@ if page == 0:
             df = df.reset_index(drop=True)
             show_cols = ["Score", "Pair", "Spread%", "Vol 24h", "Trades",
                          "BID wall", "BID dist%", "ASK wall", "ASK dist%",
-                         "Lifetime", "\u26a1"]
+                         "Lifetime", "!"]
             st.dataframe(df[show_cols], hide_index=True,
                          use_container_width=True,
                          height=min(len(df) * 35 + 40, 700))
 
-            st.markdown("##### \u2192 Click pair for detailed analysis")
+            st.markdown("##### -> Click pair for detailed analysis")
             syms = df["Pair"].tolist()
             nc = min(10, len(syms))
             btn_cols = st.columns(nc)
@@ -417,22 +414,22 @@ if page == 0:
                 with sel_c:
                     chosen = st.selectbox("All pairs", [""] + syms, key="all_pairs")
                 with go_c:
-                    if chosen and st.button("\ud83d\udd0d Go", key="go_chosen"):
+                    if chosen and st.button("(S) Go", key="go_chosen"):
                         go_detail(chosen); st.rerun()
-            st.download_button("\ud83d\udce5 CSV", data=make_csv(df[show_cols]),
+            st.download_button("DL CSV", data=make_csv(df[show_cols]),
                                file_name=f"scan_{datetime.now().strftime('%H%M')}.csv",
                                mime="text/csv")
 
-# ══════════════════════════════════════════
+# ==========================================
 # PAGE 1: DETAILS
-# ══════════════════════════════════════════
+# ==========================================
 elif page == 1:
     results = st.session_state.scan_results
     sym_list = [r.symbol for r in results] if results else []
 
     hdr = st.columns([1, 3, 2, 1, 1])
     with hdr[0]:
-        if st.button("\u2190 Back"):
+        if st.button("<- Back"):
             st.session_state.current_page = 0; st.rerun()
     with hdr[1]:
         idx = 0; ds = st.session_state.detail_symbol
@@ -446,11 +443,11 @@ elif page == 1:
     with hdr[3]:
         if symbol:
             is_fav = symbol in st.session_state.favorites
-            if st.button("\u2b50" if is_fav else "\u2606", key="fav_detail"):
+            if st.button("*" if is_fav else "o", key="fav_detail"):
                 (st.session_state.favorites.discard if is_fav else st.session_state.favorites.add)(symbol)
                 st.rerun()
     with hdr[4]:
-        if symbol and st.button("\ud83d\udeab", key="bl_detail", help="Add to blacklist"):
+        if symbol and st.button("(X)", key="bl_detail", help="Add to blacklist"):
             st.session_state.blacklist.add(symbol); st.rerun()
 
     if not symbol:
@@ -491,21 +488,21 @@ elif page == 1:
     df_1m, df_5m, df_1h, df_4h, df_1d = [parse_klines(x) for x in
                                            [kl_1m, kl_5m, kl_1h, kl_4h, kl_1d]]
 
-    st.markdown(f"### {symbol} \u00b7 {fmt_price(mid)} \u00b7 [MEXC \u2197]({mexc_link(symbol)})")
+    st.markdown(f"### {symbol} * {fmt_price(mid)} * [MEXC ->]({mexc_link(symbol)})")
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Spread", f"{spread:.2f}%")
     m2.metric("Bid $", f"${bdepth:,.0f}")
     m3.metric("Ask $", f"${adepth:,.0f}")
-    m4.metric("Trades 24h", f"{tc24:,}" if tc24 else "\u2014")
+    m4.metric("Trades 24h", f"{tc24:,}" if tc24 else "-")
     m5.metric("Vol 24h", f"${vol24:,.0f}")
     s4h = kline_stats(df_1h, 4)
     m6.metric("Vol 4h", f"${s4h['volume']:,.0f}")
 
-    # ── Walls with lifetime ──
-    st.markdown("#### \ud83e\uddf1 Walls (density levels)")
+    # -- Walls with lifetime --
+    st.markdown("#### W Walls (density levels)")
     tw_list = tracker.get_tracked_walls(symbol)
     if tw_list:
-        twr = [{"Side": "\ud83d\udfe2 BID" if tw.side == "BID" else "\ud83d\udd34 ASK",
+        twr = [{"Side": "+ BID" if tw.side == "BID" else "- ASK",
                 "Price": fmt_price(tw.price), "Size": fmt_usd(tw.size_usdt),
                 "Mult": f"{tw.multiplier}x", "Dist%": f"{tw.distance_pct}%",
                 "Lifetime": tw.lifetime_str, "Scans": tw.seen_count}
@@ -514,20 +511,20 @@ elif page == 1:
     else:
         st.caption("Wall tracking requires multiple scans")
 
-    # ── Movers history for this pair ──
+    # -- Movers history for this pair --
     sym_movers = tracker.get_symbol_movers(symbol)
     if sym_movers:
-        st.markdown("#### \u26a1 Mover events (wall relocations)")
+        st.markdown("#### ! Mover events (wall relocations)")
         mvr = [{"Time": datetime.fromtimestamp(e.timestamp).strftime("%H:%M:%S"),
                 "Side": e.side, "Size": fmt_usd(e.size_usdt),
                 "From": fmt_price(e.old_price), "To": fmt_price(e.new_price),
                 "Shift": f"{e.shift_pct:+.3f}%",
-                "Dir": "\ud83d\udfe2 LONG" if e.direction == "UP" else "\ud83d\udd34 SHORT"}
+                "Dir": "+ LONG" if e.direction == "UP" else "- SHORT"}
                for e in reversed(sym_movers[-20:])]
         st.dataframe(pd.DataFrame(mvr), hide_index=True, use_container_width=True)
 
-    # ── Volume & trades by timeframe ──
-    st.markdown("#### \ud83d\udcca Volume & trades")
+    # -- Volume & trades by timeframe --
+    st.markdown("#### # Volume & trades")
     s5 = kline_stats(df_5m, 1); s15 = kline_stats(df_5m, 3); s60 = kline_stats(df_5m, 12)
     vc = st.columns(5)
     vc[0].metric("5m", f"${s5['volume']:,.0f}", f"{s5['trades']} tr")
@@ -536,12 +533,12 @@ elif page == 1:
     vc[3].metric("4h", f"${s4h['volume']:,.0f}", f"{s4h['trades']} tr")
     vc[4].metric("24h", f"${vol24:,.0f}", f"{tc24:,} tr")
 
-    # ── Robot analysis ──
-    st.markdown("#### \ud83e\udd16 Trading pattern analysis")
+    # -- Robot analysis --
+    st.markdown("#### BOT Trading pattern analysis")
     robot = analyze_robots(trades_raw)
     if robot:
         ri = robot
-        em = "\ud83e\udd16" if ri["is_robot"] else "\ud83d\udc64"
+        em = "BOT" if ri["is_robot"] else "USR"
         st.markdown(f"{em} **Intervals:** avg={ri['avg']:.1f}s  "
                     f"min={ri['min']:.1f}s  max={ri['max']:.1f}s")
         st.markdown(f"**Mode:** {ri['mode']}s ({ri['mode_count']}x, "
@@ -553,12 +550,12 @@ elif page == 1:
                             f"{bot['count']} trades ({bot['pct']}%), "
                             f"avg vol {fmt_usd(bot['avg_vol'])}")
         elif ri["is_robot"]:
-            st.markdown("\ud83e\udd16 **Single bot detected** \u2014 stable intervals")
+            st.markdown("BOT **Single bot detected** - stable intervals")
     else:
         st.caption("Not enough trades for analysis")
 
-    # ── Charts ──
-    st.markdown("#### \ud83d\udcc8 Charts")
+    # -- Charts --
+    st.markdown("#### ^ Charts")
     chart_tabs = st.tabs(["1m", "5m", "1h", "4h", "1d"])
     for tab, dfk, lbl in zip(chart_tabs,
                               [df_1m, df_5m, df_1h, df_4h, df_1d],
@@ -568,8 +565,8 @@ elif page == 1:
             if f: st.plotly_chart(f, use_container_width=True)
             else: st.warning(f"No data for {lbl}")
 
-    # ── Orderbook + Heatmap ──
-    st.markdown("#### \ud83d\udcd6 Orderbook / Heatmap")
+    # -- Orderbook + Heatmap --
+    st.markdown("#### OB Orderbook / Heatmap")
     dv = st.select_slider("Depth", [20, 30, 50, 100], value=50, key="ob_depth")
     col_ob, col_hm = st.columns(2)
     with col_ob:
@@ -579,24 +576,24 @@ elif page == 1:
         fh = build_heatmap(bids, asks, mid, 30)
         if fh: st.plotly_chart(fh, use_container_width=True)
 
-    # ── Recent trades ──
+    # -- Recent trades --
     if trades_raw and isinstance(trades_raw, list):
-        st.markdown("#### \ud83d\udccb Recent trades")
+        st.markdown("#### = Recent trades")
         trs = []
         for t in trades_raw[:50]:
             try:
                 p = sf(t.get("price", 0)); q = sf(t.get("qty", 0))
                 ts = sf(t.get("time", 0))
                 trs.append({
-                    "Time": pd.to_datetime(ts, unit="ms").strftime("%H:%M:%S") if ts > 0 else "\u2014",
+                    "Time": pd.to_datetime(ts, unit="ms").strftime("%H:%M:%S") if ts > 0 else "-",
                     "Price": fmt_price(p), "Qty": q, "$": round(p * q, 2),
-                    "Side": "\ud83d\udfe2 BUY" if not t.get("isBuyerMaker") else "\ud83d\udd34 SELL"})
+                    "Side": "+ BUY" if not t.get("isBuyerMaker") else "- SELL"})
             except: continue
         if trs:
             st.dataframe(pd.DataFrame(trs), hide_index=True,
                          use_container_width=True, height=300)
 
-    # ── Export ──
+    # -- Export --
     st.markdown("---")
     export_data = {}
     ob_df = pd.DataFrame([{"Side": s, "Price": float(p), "Qty": float(q),
@@ -614,32 +611,32 @@ elif page == 1:
             for n, d in export_data.items():
                 zf.writestr(f"{symbol}_{n}.csv", d.to_csv(index=False))
         buf.seek(0); return buf.getvalue()
-    st.download_button(f"\ud83d\udce6 Download {symbol} ZIP", data=make_zip(),
+    st.download_button(f"ZIP Download {symbol} ZIP", data=make_zip(),
                        file_name=f"{symbol}.zip", mime="application/zip",
                        use_container_width=True)
 
-# ══════════════════════════════════════════
+# ==========================================
 # PAGE 2: MOVERS
-# ══════════════════════════════════════════
+# ==========================================
 elif page == 2:
     tracker = st.session_state.tracker
-    st.markdown("### \ud83d\udcc8 Mover Monitor")
+    st.markdown("### ^ Mover Monitor")
     st.caption("A mover = wall that relocates in the orderbook. Sign of bot/MM activity.")
 
-    tab_log, tab_rank = st.tabs(["\ud83d\udccb Log", "\ud83c\udfc6 Ranking"])
+    tab_log, tab_rank = st.tabs(["= Log", "TOP Ranking"])
     with tab_log:
         movers = tracker.get_active_movers(7200)
         if not movers:
             st.info("No movers detected yet. Run several scans first.")
         else:
-            st.success(f"\u26a1 {len(movers)} movers in last 2h")
+            st.success(f"! {len(movers)} movers in last 2h")
             mr = [{"Time": datetime.fromtimestamp(e.timestamp).strftime("%H:%M:%S"),
                    "Pair": e.symbol, "Side": e.side,
                    "Size": fmt_usd(e.size_usdt),
                    "From": fmt_price(e.old_price),
                    "To": fmt_price(e.new_price),
                    "Shift": f"{e.shift_pct:+.3f}%",
-                   "Dir": "\ud83d\udfe2 LONG" if e.direction == "UP" else "\ud83d\udd34 SHORT"}
+                   "Dir": "+ LONG" if e.direction == "UP" else "- SHORT"}
                   for e in reversed(movers)]
             mdf = pd.DataFrame(mr)
             st.dataframe(mdf, hide_index=True, use_container_width=True)
@@ -649,9 +646,9 @@ elif page == 2:
                 chosen_mover = st.selectbox("Go to detail", [""] + unique_syms,
                                             key="mover_select")
             with go_c:
-                if chosen_mover and st.button("\ud83d\udd0d", key="mover_go"):
+                if chosen_mover and st.button("(S)", key="mover_go"):
                     go_detail(chosen_mover); st.rerun()
-            st.download_button("\ud83d\udce5 CSV", data=make_csv(mdf),
+            st.download_button("DL CSV", data=make_csv(mdf),
                                file_name="movers.csv", mime="text/csv")
 
     with tab_rank:
@@ -659,10 +656,10 @@ elif page == 2:
         if top_movers:
             for i, (sym, cnt) in enumerate(top_movers):
                 rc = st.columns([3, 1, 1])
-                rc[0].markdown(f"**{i + 1}. {sym}** \u2014 {cnt} events")
-                if rc[1].button("\ud83d\udd0d", key=f"rank_{sym}"):
+                rc[0].markdown(f"**{i + 1}. {sym}** - {cnt} events")
+                if rc[1].button("(S)", key=f"rank_{sym}"):
                     go_detail(sym); st.rerun()
-                if rc[2].button("\u2b50", key=f"fav_{sym}"):
+                if rc[2].button("*", key=f"fav_{sym}"):
                     st.session_state.favorites.add(sym); st.rerun()
             fig = go.Figure(go.Bar(
                 x=[x[0] for x in top_movers],
