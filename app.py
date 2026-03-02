@@ -195,11 +195,23 @@ def run_scan(min_vol, max_vol, min_spread, wall_mult, min_wall_usd, top_n):
     cfg.MIN_SPREAD_PCT = min_spread; cfg.WALL_MULTIPLIER = wall_mult
     cfg.MIN_WALL_SIZE_USDT = min_wall_usd
     client = st.session_state.client; st.session_state.cancel_scan = False
-    progress = st.progress(0, "Loading pairs...")
+    progress = st.progress(0, "Connecting to MEXC API...")
+    # Auto-find working domain on first scan
+    if not st.session_state.get("_api_tested"):
+        ok, msg = client.ping()
+        st.session_state._api_tested = True
+        if not ok:
+            st.error(f"MEXC API unavailable: {msg}")
+            progress.empty(); return
+        progress.progress(2, f"API OK: {client.base_url}")
+    progress.progress(3, "Loading pairs...")
     try: info = client.get_exchange_info()
     except Exception as e: st.error(f"API: {e}"); progress.empty(); return
     if not info or "symbols" not in info:
-        st.error(f"No data: {client.last_error}"); progress.empty(); return
+        st.error(f"No data: {client.last_error}")
+        # Reset cache and retry
+        st.session_state._api_tested = False
+        progress.empty(); return
     bl = st.session_state.blacklist; all_sym = []
     for s in info["symbols"]:
         try:
@@ -350,11 +362,7 @@ if page == 0:
         mc3.metric("Best score", f"{results[0].score}")
         mc4.metric("! Movers", sum(1 for r in results if r.has_movers))
 
-        sort_by = st.selectbox("Sort by",
-            ["Score v", "Wall size v", "Distance ^",
-             "Lifetime v", "Spread v", "Vol 24h v"],
-            key="sort_select")
-
+        # Build table with NUMERIC columns so header-click sorting works
         rows = []
         for r in results:
             if not r.all_walls: continue
@@ -371,37 +379,30 @@ if page == 0:
             bt = max(r.bid_walls, key=lambda w: w.size_usdt) if r.bid_walls else None
             at = max(r.ask_walls, key=lambda w: w.size_usdt) if r.ask_walls else None
             rows.append({
-                "Score": r.score, "Pair": r.symbol,
+                "Score": r.score,
+                "Pair": r.symbol,
                 "Spread%": round(r.spread_pct, 2),
-                "Vol 24h": fmt_usd(r.volume_24h_usdt),
-                "Trades": r.trade_count_24h if r.trade_count_24h > 0 else "-",
-                "BID wall": f"{fmt_usd(bt.size_usdt)} ({bt.multiplier}x)" if bt else "-",
-                "BID dist%": f"{bt.distance_pct}%" if bt else "-",
-                "ASK wall": f"{fmt_usd(at.size_usdt)} ({at.multiplier}x)" if at else "-",
-                "ASK dist%": f"{at.distance_pct}%" if at else "-",
-                "Lifetime": lt_str,
-                "!": "!" if r.has_movers else "",
-                "_s": r.score, "_w": bw.size_usdt if bw else 0,
-                "_d": bw.distance_pct if bw else 99,
-                "_l": lt_s, "_sp": r.spread_pct, "_v": r.volume_24h_usdt,
+                "Vol24h$": round(r.volume_24h_usdt),
+                "Trades": r.trade_count_24h if r.trade_count_24h > 0 else 0,
+                "BID$": round(bt.size_usdt) if bt else 0,
+                "BIDx": bt.multiplier if bt else 0,
+                "BID%": bt.distance_pct if bt else 0,
+                "ASK$": round(at.size_usdt) if at else 0,
+                "ASKx": at.multiplier if at else 0,
+                "ASK%": at.distance_pct if at else 0,
+                "Life(s)": round(lt_s),
+                "Life": lt_str,
+                "Mv": "!" if r.has_movers else "",
             })
         if rows:
             df = pd.DataFrame(rows)
-            if "Wall size" in sort_by: df = df.sort_values("_w", ascending=False)
-            elif "Distance" in sort_by: df = df.sort_values("_d", ascending=True)
-            elif "Lifetime" in sort_by: df = df.sort_values("_l", ascending=False)
-            elif "Spread" in sort_by: df = df.sort_values("_sp", ascending=False)
-            elif "Vol 24h" in sort_by: df = df.sort_values("_v", ascending=False)
-            else: df = df.sort_values("_s", ascending=False)
-            df = df.reset_index(drop=True)
-            show_cols = ["Score", "Pair", "Spread%", "Vol 24h", "Trades",
-                         "BID wall", "BID dist%", "ASK wall", "ASK dist%",
-                         "Lifetime", "!"]
-            st.dataframe(df[show_cols], hide_index=True,
+            df = df.sort_values("Score", ascending=False).reset_index(drop=True)
+            st.caption("Click any column header to sort")
+            st.dataframe(df, hide_index=True,
                          use_container_width=True,
                          height=min(len(df) * 35 + 40, 700))
 
-            st.markdown("##### -> Click pair for detailed analysis")
+            st.markdown("##### -> Click pair for analysis")
             syms = df["Pair"].tolist()
             nc = min(10, len(syms))
             btn_cols = st.columns(nc)
@@ -414,9 +415,9 @@ if page == 0:
                 with sel_c:
                     chosen = st.selectbox("All pairs", [""] + syms, key="all_pairs")
                 with go_c:
-                    if chosen and st.button("(S) Go", key="go_chosen"):
+                    if chosen and st.button("Go", key="go_chosen"):
                         go_detail(chosen); st.rerun()
-            st.download_button("DL CSV", data=make_csv(df[show_cols]),
+            st.download_button("CSV", data=make_csv(df),
                                file_name=f"scan_{datetime.now().strftime('%H%M')}.csv",
                                mime="text/csv")
 
@@ -471,7 +472,13 @@ elif page == 1:
             st.error(str(e)); st.stop()
 
     if not book_raw or not book_raw.get("bids") or not book_raw.get("asks"):
-        st.error(f"No orderbook for {symbol}"); st.stop()
+        err_msg = client.last_error or "empty response"
+        st.error(f"No orderbook for {symbol}: {err_msg}")
+        st.caption("Possible causes: API rate limit, invalid pair, or MEXC API issue")
+        # Try ping to diagnose
+        ok, msg = client.ping()
+        st.caption(f"API status: {msg}")
+        st.stop()
 
     bids = parse_book(book_raw["bids"])
     asks = parse_book(book_raw["asks"])
